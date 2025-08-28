@@ -203,7 +203,7 @@ func TestLocalSessionPool_Release(t *testing.T) {
 		key, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
 		require.NoError(t, err)
 
-		pool.Release(key, "api1")
+		pool.Release(key)
 
 		// Check stats after release
 		localPool := pool.(*LocalSessionPool)
@@ -217,7 +217,7 @@ func TestLocalSessionPool_Release(t *testing.T) {
 		require.NoError(t, err)
 
 		// This will now just log an error instead of returning one
-		pool.Release("unknown-session-key", "api1")
+		pool.Release("unknown-session-key")
 	})
 
 	t.Run("release with empty key", func(t *testing.T) {
@@ -225,36 +225,7 @@ func TestLocalSessionPool_Release(t *testing.T) {
 		require.NoError(t, err)
 
 		// This will now just log an error instead of returning one
-		pool.Release("", "api1")
-	})
-
-	t.Run("API key validation", func(t *testing.T) {
-		pool, err := NewLocalSessionPool("local://localhost?max_sessions=10", logger)
-		require.NoError(t, err)
-
-		key, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
-		require.NoError(t, err)
-
-		// Release with wrong API key - will now just log an error
-		pool.Release(key, "wrong-api")
-
-		// Need to get a new session since the previous one was released (even with wrong API)
-		key, err = pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
-		require.NoError(t, err)
-
-		// Release with correct API key
-		pool.Release(key, "api1")
-	})
-
-	t.Run("release with empty API key succeeds", func(t *testing.T) {
-		pool, err := NewLocalSessionPool("local://localhost?max_sessions=10", logger)
-		require.NoError(t, err)
-
-		key, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
-		require.NoError(t, err)
-
-		// Release with empty API key should succeed
-		pool.Release(key, "")
+		pool.Release("")
 	})
 
 	t.Run("trace ID cleanup", func(t *testing.T) {
@@ -270,7 +241,7 @@ func TestLocalSessionPool_Release(t *testing.T) {
 		localPool := pool.(*LocalSessionPool)
 
 		// Release first session
-		pool.Release(key1, "api1")
+		pool.Release(key1)
 
 		localPool.mu.RLock()
 		count := localPool.traceIDSessions["trace1"]
@@ -278,7 +249,7 @@ func TestLocalSessionPool_Release(t *testing.T) {
 		assert.Equal(t, int64(1), count)
 
 		// Release second session
-		pool.Release(key2, "api1")
+		pool.Release(key2)
 
 		localPool.mu.RLock()
 		_, exists := localPool.traceIDSessions["trace1"]
@@ -317,7 +288,7 @@ func TestLocalSessionPool_Concurrency(t *testing.T) {
 					// Simulate some work
 					time.Sleep(time.Millisecond * 10)
 
-					pool.Release(key, fmt.Sprintf("api%d", workerID))
+					pool.Release(key)
 				}
 			}(i)
 		}
@@ -374,7 +345,7 @@ func TestLocalSessionPool_Concurrency(t *testing.T) {
 
 		// Release all borrowed sessions
 		for key := range keys {
-			pool.Release(key, "")
+			pool.Release(key)
 		}
 	})
 }
@@ -409,7 +380,7 @@ func TestLocalSessionPool_GetStats(t *testing.T) {
 	assert.Equal(t, 3, users)    // user1, user2, user3
 
 	// Release one session
-	pool.Release(key1, "api1")
+	pool.Release(key1)
 
 	borrowed, available, traceIDs, users = pool.(*LocalSessionPool).GetStats()
 	assert.Equal(t, 2, borrowed)
@@ -418,8 +389,8 @@ func TestLocalSessionPool_GetStats(t *testing.T) {
 	assert.Equal(t, 2, users)    // user2, user3
 
 	// Release remaining sessions
-	pool.Release(key2, "api2")
-	pool.Release(key3, "api3")
+	pool.Release(key2)
+	pool.Release(key3)
 
 	borrowed, available, traceIDs, users = pool.(*LocalSessionPool).GetStats()
 	assert.Equal(t, 0, borrowed)
@@ -454,7 +425,7 @@ func TestLocalSessionPool_UserSessionTracking(t *testing.T) {
 		assert.Equal(t, int64(1), user2Count)
 
 		// Release one session for user1
-		pool.Release(key1, "api1")
+		pool.Release(key1)
 
 		localPool.mu.RLock()
 		user1Count = localPool.userSessions["user1"]
@@ -462,8 +433,8 @@ func TestLocalSessionPool_UserSessionTracking(t *testing.T) {
 		assert.Equal(t, int64(1), user1Count)
 
 		// Release remaining sessions
-		pool.Release(key2, "api1")
-		pool.Release(key3, "api2")
+		pool.Release(key2)
+		pool.Release(key3)
 
 		localPool.mu.RLock()
 		_, user1Exists := localPool.userSessions["user1"]
@@ -498,14 +469,14 @@ func TestLocalSessionPool_UserSessionTracking(t *testing.T) {
 		assert.ErrorIs(t, err, dsession.ErrConcurrentStreamLimitExceeded)
 
 		// Release one session for user1, should be able to borrow again
-		pool.Release(key1, "api1")
+		pool.Release(key1)
 		key5, err := pool.Get(ctx, "service", "user1", "api1", "trace7", nil)
 		require.NoError(t, err)
 
 		// Clean up
-		pool.Release(key2, "api1")
-		pool.Release(key3, "api2")
-		pool.Release(key4, "api2")
-		pool.Release(key5, "api1")
+		pool.Release(key2)
+		pool.Release(key3)
+		pool.Release(key4)
+		pool.Release(key5)
 	})
 }

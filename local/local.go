@@ -154,7 +154,7 @@ func (p *LocalSessionPool) Get(
 }
 
 // Release returns a session to the local pool
-func (p *LocalSessionPool) Release(sessionKey, apiKeyID string) {
+func (p *LocalSessionPool) Release(sessionKey string) {
 	if sessionKey == "" {
 		p.logger.Error("session key cannot be empty")
 		return

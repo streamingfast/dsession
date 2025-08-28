@@ -29,7 +29,7 @@ type SessionPool interface {
 	Get(ctx context.Context, serviceName string, userID string, apiKeyID string, traceID string, onError func(error)) (key string, err error)
 
 	// Release returns a session to the pool
-	Release(sessionKey, apiKeyID string)
+	Release(sessionKey string)
 }
 
 var registry = make(map[string]FactoryFunc)
