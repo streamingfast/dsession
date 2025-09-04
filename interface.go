@@ -17,6 +17,13 @@ type SessionPool interface {
 
 	// Release returns a session to the pool
 	Release(sessionKey string)
+
+	// Get a worker from the pool, never more than maxWorkersPerSession for your own session
+	// The error can be either ErrSessionNotFound or ErrWorkersLimitExceeded
+	GetWorker(ctx context.Context, serviceName string, requestKey string, maxWorkersPerSession int) (workerKey string, err error)
+
+	// Get a worker from the pool, never more than maxWorkersPerSession for your own session
+	ReleaseWorker(workerKey string)
 }
 
 var registry = make(map[string]FactoryFunc)

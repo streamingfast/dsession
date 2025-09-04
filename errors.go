@@ -34,3 +34,9 @@ func ToConnectError(err error) (error, bool) {
 	}
 	return err, false
 }
+
+// ErrWorkersLimitExceeded is returned when the maximum number of workers has been reached (either global, per-user or per-session)
+var ErrWorkersLimitExceeded = errors.New("Workers limit exceeded")
+
+// ErrSessionNotFound is returned when trying to get a worker for a session that does not exist (anymore)
+var ErrSessionNotFound = errors.New("Session not found")
