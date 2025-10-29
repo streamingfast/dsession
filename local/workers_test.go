@@ -17,11 +17,11 @@ func TestLocalSessionPool_GetWorker(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("successful worker borrow", func(t *testing.T) {
-		pool, err := NewLocalSessionPool("local://localhost?max_workers=10&max_workers_per_session=5&max_workers_per_user=8", logger)
+		pool, err := NewLocalSessionPool("local://localhost?max_workers=10&max_workers_per_session=5&max_workers_per_organization=8", logger)
 		require.NoError(t, err)
 
 		// First create a session
-		sessionKey, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		sessionKey, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		require.NoError(t, err)
 
 		// Get a worker for the session
@@ -35,12 +35,12 @@ func TestLocalSessionPool_GetWorker(t *testing.T) {
 		localPool := pool.(*LocalSessionPool)
 		localPool.mu.RLock()
 		mappedSessionKey, exists := localPool.workerToSession[workerKey]
-		userWorkers := localPool.userWorkers["user1"]
+		orgWorkers := localPool.orgWorkers["org1"]
 		localPool.mu.RUnlock()
 
 		assert.True(t, exists)
 		assert.Equal(t, sessionKey, mappedSessionKey)
-		assert.Equal(t, int64(1), userWorkers)
+		assert.Equal(t, int64(1), orgWorkers)
 	})
 
 	t.Run("session not found", func(t *testing.T) {
@@ -55,16 +55,16 @@ func TestLocalSessionPool_GetWorker(t *testing.T) {
 		testCases := []struct {
 			name        string
 			config      string
-			setupFunc   func(*testing.T, dsession.SessionPool) ([]string, []string) // returns sessionKeys, users
+			setupFunc   func(*testing.T, dsession.SessionPool) ([]string, []string) // returns sessionKeys, organizations
 			expectError bool
 		}{
 			{
 				name:   "max global workers exceeded",
-				config: "local://localhost?max_workers=2&max_workers_per_session=5&max_workers_per_user=5",
+				config: "local://localhost?max_workers=2&max_workers_per_session=5&max_workers_per_organization=5",
 				setupFunc: func(t *testing.T, pool dsession.SessionPool) ([]string, []string) {
-					sessionKey1, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+					sessionKey1, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 					require.NoError(t, err)
-					sessionKey2, err := pool.Get(ctx, "service1", "user2", "api2", "trace2", nil)
+					sessionKey2, err := pool.Get(ctx, "service1", "org2", "api2", "trace2", nil)
 					require.NoError(t, err)
 
 					// Get maximum workers
@@ -78,15 +78,15 @@ func TestLocalSessionPool_GetWorker(t *testing.T) {
 				expectError: true,
 			},
 			{
-				name:   "max workers per user exceeded",
-				config: "local://localhost?max_workers=10&max_workers_per_user=2&max_workers_per_session=5",
+				name:   "max workers per org exceeded",
+				config: "local://localhost?max_workers=10&max_workers_per_organization=2&max_workers_per_session=5",
 				setupFunc: func(t *testing.T, pool dsession.SessionPool) ([]string, []string) {
-					sessionKey1, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+					sessionKey1, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 					require.NoError(t, err)
-					sessionKey2, err := pool.Get(ctx, "service1", "user1", "api1", "trace2", nil)
+					sessionKey2, err := pool.Get(ctx, "service1", "org1", "api1", "trace2", nil)
 					require.NoError(t, err)
 
-					// Get maximum workers for the user
+					// Get maximum workers for the org
 					workerKey1, err := pool.GetWorker(ctx, "service1", sessionKey1, 3)
 					require.NoError(t, err)
 					workerKey2, err := pool.GetWorker(ctx, "service1", sessionKey2, 3)
@@ -98,9 +98,9 @@ func TestLocalSessionPool_GetWorker(t *testing.T) {
 			},
 			{
 				name:   "max workers per session exceeded - pool limit",
-				config: "local://localhost?max_workers=10&max_workers_per_session=2&max_workers_per_user=5",
+				config: "local://localhost?max_workers=10&max_workers_per_session=2&max_workers_per_organization=5",
 				setupFunc: func(t *testing.T, pool dsession.SessionPool) ([]string, []string) {
-					sessionKey, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+					sessionKey, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 					require.NoError(t, err)
 
 					// Get maximum workers for the session (pool limit is 2)
@@ -142,7 +142,7 @@ func TestLocalSessionPool_GetWorker(t *testing.T) {
 		pool, err := NewLocalSessionPool("local://localhost?max_workers=10&max_workers_per_session=5", logger)
 		require.NoError(t, err)
 
-		sessionKey, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		sessionKey, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		require.NoError(t, err)
 
 		// Test unique keys and numbering
@@ -171,11 +171,11 @@ func TestLocalSessionPool_ReleaseWorker(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("successful worker release", func(t *testing.T) {
-		pool, err := NewLocalSessionPool("local://localhost?max_workers=10&max_workers_per_session=5&max_workers_per_user=5", logger)
+		pool, err := NewLocalSessionPool("local://localhost?max_workers=10&max_workers_per_session=5&max_workers_per_organization=5", logger)
 		require.NoError(t, err)
 
 		// Create session and get worker
-		sessionKey, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		sessionKey, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		require.NoError(t, err)
 		workerKey, err := pool.GetWorker(ctx, "service1", sessionKey, 3)
 		require.NoError(t, err)
@@ -185,10 +185,10 @@ func TestLocalSessionPool_ReleaseWorker(t *testing.T) {
 		// Verify worker is tracked before release
 		localPool.mu.RLock()
 		_, exists := localPool.workerToSession[workerKey]
-		userWorkers := localPool.userWorkers["user1"]
+		orgWorkers := localPool.orgWorkers["org1"]
 		localPool.mu.RUnlock()
 		assert.True(t, exists)
-		assert.Equal(t, int64(1), userWorkers)
+		assert.Equal(t, int64(1), orgWorkers)
 
 		// Release the worker
 		pool.ReleaseWorker(workerKey)
@@ -196,10 +196,10 @@ func TestLocalSessionPool_ReleaseWorker(t *testing.T) {
 		// Verify worker is no longer tracked
 		localPool.mu.RLock()
 		_, exists = localPool.workerToSession[workerKey]
-		userWorkers = localPool.userWorkers["user1"]
+		orgWorkers = localPool.orgWorkers["org1"]
 		localPool.mu.RUnlock()
 		assert.False(t, exists)
-		assert.Equal(t, int64(0), userWorkers)
+		assert.Equal(t, int64(0), orgWorkers)
 	})
 
 	t.Run("edge cases", func(t *testing.T) {
@@ -224,7 +224,7 @@ func TestLocalSessionPool_ReleaseWorker(t *testing.T) {
 				name: "worker for released session",
 				setupFunc: func() string {
 					// Create session and get worker
-					sessionKey, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+					sessionKey, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 					require.NoError(t, err)
 					workerKey, err := pool.GetWorker(ctx, "service1", sessionKey, 3)
 					require.NoError(t, err)
@@ -253,11 +253,11 @@ func TestLocalSessionPool_ReleaseWorker(t *testing.T) {
 	})
 
 	t.Run("counter cleanup", func(t *testing.T) {
-		pool, err := NewLocalSessionPool("local://localhost?max_workers=10&max_workers_per_session=5&max_workers_per_user=5", logger)
+		pool, err := NewLocalSessionPool("local://localhost?max_workers=10&max_workers_per_session=5&max_workers_per_organization=5", logger)
 		require.NoError(t, err)
 
 		// Create session and get multiple workers
-		sessionKey, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		sessionKey, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		require.NoError(t, err)
 
 		workerKeys := make([]string, 3)
@@ -278,16 +278,16 @@ func TestLocalSessionPool_ReleaseWorker(t *testing.T) {
 			localPool.mu.RLock()
 			sessionInfo := localPool.borrowedSessions[sessionKey]
 			sessionWorkers := sessionInfo.workers.Load()
-			userWorkers, userExists := localPool.userWorkers["user1"]
+			orgWorkers, orgExists := localPool.orgWorkers["org1"]
 			localPool.mu.RUnlock()
 
 			assert.Equal(t, expectedCount, globalWorkers)
 			assert.Equal(t, expectedCount, sessionWorkers)
 
 			if expectedCount == 0 {
-				assert.False(t, userExists, "user worker count should be cleaned up when it reaches 0")
+				assert.False(t, orgExists, "org worker count should be cleaned up when it reaches 0")
 			} else {
-				assert.Equal(t, expectedCount, userWorkers)
+				assert.Equal(t, expectedCount, orgWorkers)
 			}
 		}
 	})
@@ -299,14 +299,14 @@ func TestLocalSessionPool_WorkerConcurrency(t *testing.T) {
 
 	t.Run("concurrent operations and limit enforcement", func(t *testing.T) {
 		// Test concurrent operations with clear global limit only
-		pool, err := NewLocalSessionPool("local://localhost?max_workers=10&max_workers_per_session=100&max_workers_per_user=100", logger)
+		pool, err := NewLocalSessionPool("local://localhost?max_workers=10&max_workers_per_session=100&max_workers_per_organization=100", logger)
 		require.NoError(t, err)
 
-		// Create sessions for multiple users
+		// Create sessions for multiple organizations
 		sessions := make([]string, 3)
-		users := []string{"user1", "user2", "user3"}
-		for i, user := range users {
-			sessions[i], err = pool.Get(ctx, "service", user, fmt.Sprintf("api%d", i), fmt.Sprintf("trace%d", i), nil)
+		organizations := []string{"org1", "org2", "org3"}
+		for i, organization := range organizations {
+			sessions[i], err = pool.Get(ctx, "service", organization, fmt.Sprintf("api%d", i), fmt.Sprintf("trace%d", i), nil)
 			require.NoError(t, err)
 		}
 
@@ -369,12 +369,12 @@ func TestLocalSessionPool_WorkerConcurrency(t *testing.T) {
 		globalWorkers := localPool.workerCounter.Load()
 		localPool.mu.RLock()
 		workerMappings := len(localPool.workerToSession)
-		userWorkers := len(localPool.userWorkers)
+		orgWorkers := len(localPool.orgWorkers)
 		localPool.mu.RUnlock()
 
 		assert.Equal(t, int64(0), globalWorkers)
 		assert.Equal(t, 0, workerMappings)
-		assert.Equal(t, 0, userWorkers)
+		assert.Equal(t, 0, orgWorkers)
 
 		// Clean up sessions
 		for _, sessionKey := range sessions {
@@ -388,25 +388,25 @@ func TestLocalSessionPool_WorkerIntegration(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("complete lifecycle", func(t *testing.T) {
-		pool, err := NewLocalSessionPool("local://localhost?max_workers=20&max_workers_per_session=3&max_workers_per_user=5", logger)
+		pool, err := NewLocalSessionPool("local://localhost?max_workers=20&max_workers_per_session=3&max_workers_per_organization=5", logger)
 		require.NoError(t, err)
 
-		// Create sessions for different users
+		// Create sessions for different organizations
 		sessionKeys := make(map[string][]string)
-		users := []string{"user1", "user2", "user3"}
+		organizations := []string{"org1", "org2", "org3"}
 
-		for _, user := range users {
-			sessionKeys[user] = make([]string, 2)
+		for _, org := range organizations {
+			sessionKeys[org] = make([]string, 2)
 			for i := 0; i < 2; i++ {
-				sessionKeys[user][i], err = pool.Get(ctx, "service", user, fmt.Sprintf("api-%s-%d", user, i), fmt.Sprintf("trace-%s-%d", user, i), nil)
+				sessionKeys[org][i], err = pool.Get(ctx, "service", org, fmt.Sprintf("api-%s-%d", org, i), fmt.Sprintf("trace-%s-%d", org, i), nil)
 				require.NoError(t, err)
 			}
 		}
 
 		// Get workers for each session (2 workers per session)
 		workerKeys := make([]string, 0)
-		for _, user := range users {
-			for _, sessionKey := range sessionKeys[user] {
+		for _, org := range organizations {
+			for _, sessionKey := range sessionKeys[org] {
 				for i := 0; i < 2; i++ {
 					workerKey, err := pool.GetWorker(ctx, "service", sessionKey, 3)
 					require.NoError(t, err)
@@ -416,17 +416,17 @@ func TestLocalSessionPool_WorkerIntegration(t *testing.T) {
 		}
 
 		// Verify totals
-		assert.Len(t, workerKeys, 12) // 3 users × 2 sessions × 2 workers
+		assert.Len(t, workerKeys, 12) // 3 organizations × 2 sessions × 2 workers
 
 		localPool := pool.(*LocalSessionPool)
 		globalWorkers := localPool.workerCounter.Load()
 		assert.Equal(t, int64(12), globalWorkers)
 
-		// Verify per-user worker counts
+		// Verify per-org worker counts
 		localPool.mu.RLock()
-		for _, user := range users {
-			userWorkerCount := localPool.userWorkers[user]
-			assert.Equal(t, int64(4), userWorkerCount) // 2 sessions × 2 workers each
+		for _, org := range organizations {
+			orgWorkerCount := localPool.orgWorkers[org]
+			assert.Equal(t, int64(4), orgWorkerCount) // 2 sessions × 2 workers each
 		}
 		localPool.mu.RUnlock()
 
@@ -436,8 +436,8 @@ func TestLocalSessionPool_WorkerIntegration(t *testing.T) {
 		}
 
 		// Release all sessions
-		for _, user := range users {
-			for _, sessionKey := range sessionKeys[user] {
+		for _, organization := range organizations {
+			for _, sessionKey := range sessionKeys[organization] {
 				pool.Release(sessionKey)
 			}
 		}
@@ -446,15 +446,15 @@ func TestLocalSessionPool_WorkerIntegration(t *testing.T) {
 		globalWorkers = localPool.workerCounter.Load()
 		localPool.mu.RLock()
 		workerMappings := len(localPool.workerToSession)
-		userWorkers := len(localPool.userWorkers)
+		orgWorkers := len(localPool.orgWorkers)
 		sessions := len(localPool.borrowedSessions)
-		userSessions := len(localPool.userSessions)
+		organizationSessions := len(localPool.organizationSessions)
 		localPool.mu.RUnlock()
 
 		assert.Equal(t, int64(0), globalWorkers)
 		assert.Equal(t, 0, workerMappings)
-		assert.Equal(t, 0, userWorkers)
+		assert.Equal(t, 0, orgWorkers)
 		assert.Equal(t, 0, sessions)
-		assert.Equal(t, 0, userSessions)
+		assert.Equal(t, 0, organizationSessions)
 	})
 }

@@ -9,7 +9,7 @@ import (
 // ErrUnavailable is returned when the session pool service cannot be reached
 var ErrUnavailable = errors.New("Unavailable")
 
-// ErrPermissionDenied is returned when the userID or keyID has been disabled for that service
+// ErrPermissionDenied is returned when the organizationID or keyID has been disabled for that service
 var ErrPermissionDenied = errors.New("Permission denied")
 
 // ErrQuotaExceeded is returned when the quota for the service has been exceeded (ex: too many bytes read on a strict quota)
@@ -35,7 +35,7 @@ func ToConnectError(err error) (error, bool) {
 	return err, false
 }
 
-// ErrWorkersLimitExceeded is returned when the maximum number of workers has been reached (either global, per-user or per-session)
+// ErrWorkersLimitExceeded is returned when the maximum number of workers has been reached (either global, per-organization or per-session)
 var ErrWorkersLimitExceeded = errors.New("Workers limit exceeded")
 
 // ErrSessionNotFound is returned when trying to get a worker for a session that does not exist (anymore)

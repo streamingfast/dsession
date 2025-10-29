@@ -42,14 +42,14 @@ func (p *LocalSessionPool) GetWorker(
 	}
 
 	// Check per-user worker limit
-	userWorkers := p.userWorkers[sess.userID]
-	if userWorkers >= p.maxWorkersPerUser {
+	userWorkers := p.orgWorkers[sess.organizationID]
+	if userWorkers >= p.maxWorkersPerOrg {
 		// Rollback global counter
 		p.workerCounter.Add(-1)
 		p.logger.Debug("max workers per user reached",
-			zap.String("user_id", sess.userID),
+			zap.String("user_id", sess.organizationID),
 			zap.Int64("user_workers", userWorkers),
-			zap.Int64("max_per_user", p.maxWorkersPerUser))
+			zap.Int64("max_per_user", p.maxWorkersPerOrg))
 		return "", dsession.ErrWorkersLimitExceeded
 	}
 
@@ -76,7 +76,7 @@ func (p *LocalSessionPool) GetWorker(
 
 	// Track the worker-to-session mapping and update user worker count
 	p.workerToSession[workerKey] = requestKey
-	p.userWorkers[sess.userID]++
+	p.orgWorkers[sess.organizationID]++
 
 	p.logger.Debug("worker borrowed",
 		zap.String("worker_key", workerKey),
@@ -122,10 +122,10 @@ func (p *LocalSessionPool) ReleaseWorker(workerKey string) {
 	sessionWorkers := sess.workers.Add(-1)
 
 	// Decrement user worker count
-	if count, ok := p.userWorkers[sess.userID]; ok && count > 0 {
-		p.userWorkers[sess.userID]--
-		if p.userWorkers[sess.userID] == 0 {
-			delete(p.userWorkers, sess.userID)
+	if count, ok := p.orgWorkers[sess.organizationID]; ok && count > 0 {
+		p.orgWorkers[sess.organizationID]--
+		if p.orgWorkers[sess.organizationID] == 0 {
+			delete(p.orgWorkers, sess.organizationID)
 		}
 	}
 

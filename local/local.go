@@ -21,20 +21,20 @@ type LocalSessionPool struct {
 
 	// Configuration
 	maxSessions          int64
-	maxSessionsPerUser   int64
+	maxSessionsPerOrg    int64
 	maxWorkers           int64
-	maxWorkersPerUser    int64
+	maxWorkersPerOrg     int64
 	maxWorkersPerSession int64
 
 	// Runtime state
-	mu               sync.RWMutex
-	borrowedSessions map[string]*sessionInfo
-	sessionCounter   atomic.Int64
-	workerCounter    atomic.Int64
-	traceIDSessions  map[string]int64
-	userSessions     map[string]int64
-	userWorkers      map[string]int64
-	workerToSession  map[string]string
+	mu                   sync.RWMutex
+	borrowedSessions     map[string]*sessionInfo
+	sessionCounter       atomic.Int64
+	workerCounter        atomic.Int64
+	traceIDSessions      map[string]int64
+	organizationSessions map[string]int64
+	orgWorkers           map[string]int64
+	workerToSession      map[string]string
 }
 
 // NewLocalSessionPool creates a new local session pool
@@ -47,14 +47,14 @@ func NewLocalSessionPool(config string, logger *zap.Logger) (dsession.SessionPoo
 	pool := &LocalSessionPool{
 		logger:               logger.With(zap.String("component", "local_session_pool")),
 		maxSessions:          100, // defaults
-		maxSessionsPerUser:   10,
+		maxSessionsPerOrg:    10,
 		maxWorkers:           100,
-		maxWorkersPerUser:    100,
+		maxWorkersPerOrg:     100,
 		maxWorkersPerSession: 100,
 		borrowedSessions:     make(map[string]*sessionInfo),
 		traceIDSessions:      make(map[string]int64),
-		userSessions:         make(map[string]int64),
-		userWorkers:          make(map[string]int64),
+		organizationSessions: make(map[string]int64),
+		orgWorkers:           make(map[string]int64),
 		workerToSession:      make(map[string]string),
 	}
 
@@ -67,9 +67,15 @@ func NewLocalSessionPool(config string, logger *zap.Logger) (dsession.SessionPoo
 		}
 	}
 
-	if maxSessionsPerUserStr := params.Get("max_sessions_per_user"); maxSessionsPerUserStr != "" {
-		if maxSessionsPerUser, err := strconv.ParseInt(maxSessionsPerUserStr, 10, 64); err == nil {
-			pool.maxSessionsPerUser = maxSessionsPerUser
+	maxSessionsPerOrgStr := params.Get("max_sessions_per_organization")
+	if maxSessionsPerOrgStr == "" {
+		// Keep backward compatibility for old name for now
+		maxSessionsPerOrgStr = params.Get("max_sessions_per_user")
+	}
+
+	if maxSessionsPerOrgStr != "" {
+		if maxSessionsPerOrg, err := strconv.ParseInt(maxSessionsPerOrgStr, 10, 64); err == nil {
+			pool.maxSessionsPerOrg = maxSessionsPerOrg
 		}
 	}
 
@@ -79,9 +85,15 @@ func NewLocalSessionPool(config string, logger *zap.Logger) (dsession.SessionPoo
 		}
 	}
 
-	if maxWorkersPerUserStr := params.Get("max_workers_per_user"); maxWorkersPerUserStr != "" {
-		if maxWorkersPerUser, err := strconv.ParseInt(maxWorkersPerUserStr, 10, 64); err == nil {
-			pool.maxWorkersPerUser = maxWorkersPerUser
+	maxWorkersPerOrgStr := params.Get("max_workers_per_organization")
+	if maxWorkersPerOrgStr == "" {
+		// Keep backward compatibility for old name for now
+		maxWorkersPerOrgStr = params.Get("max_workers_per_user")
+	}
+
+	if maxWorkersPerOrgStr != "" {
+		if maxWorkersPerOrg, err := strconv.ParseInt(maxWorkersPerOrgStr, 10, 64); err == nil {
+			pool.maxWorkersPerOrg = maxWorkersPerOrg
 		}
 	}
 
@@ -93,10 +105,10 @@ func NewLocalSessionPool(config string, logger *zap.Logger) (dsession.SessionPoo
 
 	logger.Info("local session pool initialized",
 		zap.Int64("max_sessions", pool.maxSessions),
-		zap.Int64("max_sessions_per_user", pool.maxSessionsPerUser),
+		zap.Int64("max_sessions_per_organization", pool.maxSessionsPerOrg),
 		zap.Int64("max_workers", pool.maxWorkers),
 		zap.Int64("max_workers_per_session", pool.maxWorkersPerSession),
-		zap.Int64("max_workers_per_user", pool.maxWorkersPerUser))
+		zap.Int64("max_workers_per_organization", pool.maxWorkersPerOrg))
 
 	return pool, nil
 }

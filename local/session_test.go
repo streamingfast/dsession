@@ -17,39 +17,53 @@ func TestNewLocalSessionPool(t *testing.T) {
 	logger := zap.NewNop()
 
 	tests := []struct {
-		name                   string
-		config                 string
-		wantMaxSessions        int64
-		wantMaxSessionsPerUser int64
-		wantErr                bool
+		name                           string
+		config                         string
+		wantMaxSessions                int64
+		wantMaxSessionsPerOrganization int64
+		wantErr                        bool
 	}{
 		{
-			name:                   "default configuration",
-			config:                 "local://",
-			wantMaxSessions:        100,
-			wantMaxSessionsPerUser: 10,
-			wantErr:                false,
+			name:                           "default configuration",
+			config:                         "local://",
+			wantMaxSessions:                100,
+			wantMaxSessionsPerOrganization: 10,
+			wantErr:                        false,
 		},
 		{
-			name:                   "custom max sessions",
-			config:                 "local://?max_sessions=50",
-			wantMaxSessions:        50,
-			wantMaxSessionsPerUser: 10,
-			wantErr:                false,
+			name:                           "custom max sessions",
+			config:                         "local://?max_sessions=50",
+			wantMaxSessions:                50,
+			wantMaxSessionsPerOrganization: 10,
+			wantErr:                        false,
 		},
 		{
-			name:                   "custom max sessions per user",
-			config:                 "local://localhost?max_sessions_per_user=5",
-			wantMaxSessions:        100,
-			wantMaxSessionsPerUser: 5,
-			wantErr:                false,
+			name:                           "custom max sessions per organization",
+			config:                         "local://localhost?max_sessions_per_organization=5",
+			wantMaxSessions:                100,
+			wantMaxSessionsPerOrganization: 5,
+			wantErr:                        false,
 		},
 		{
-			name:                   "both custom parameters",
-			config:                 "local://localhost?max_sessions=25&max_sessions_per_user=3",
-			wantMaxSessions:        25,
-			wantMaxSessionsPerUser: 3,
-			wantErr:                false,
+			name:                           "both custom parameters",
+			config:                         "local://localhost?max_sessions=25&max_sessions_per_organization=3",
+			wantMaxSessions:                25,
+			wantMaxSessionsPerOrganization: 3,
+			wantErr:                        false,
+		},
+		{
+			name:                           "custom max sessions per organization (legacy config)",
+			config:                         "local://localhost?max_sessions_per_user=5",
+			wantMaxSessions:                100,
+			wantMaxSessionsPerOrganization: 5,
+			wantErr:                        false,
+		},
+		{
+			name:                           "both custom parameters (legacy config)",
+			config:                         "local://localhost?max_sessions=25&max_sessions_per_user=3",
+			wantMaxSessions:                25,
+			wantMaxSessionsPerOrganization: 3,
+			wantErr:                        false,
 		},
 		{
 			name:    "invalid URL",
@@ -70,7 +84,7 @@ func TestNewLocalSessionPool(t *testing.T) {
 
 			localPool := pool.(*LocalSessionPool)
 			assert.Equal(t, tt.wantMaxSessions, localPool.maxSessions)
-			assert.Equal(t, tt.wantMaxSessionsPerUser, localPool.maxSessionsPerUser)
+			assert.Equal(t, tt.wantMaxSessionsPerOrganization, localPool.maxSessionsPerOrg)
 		})
 	}
 }
@@ -83,7 +97,7 @@ func TestLocalSessionPool_Get(t *testing.T) {
 		pool, err := NewLocalSessionPool("local://localhost?max_sessions=10", logger)
 		require.NoError(t, err)
 
-		key, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		key, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, key)
 		assert.Contains(t, key, "local-session")
@@ -101,42 +115,42 @@ func TestLocalSessionPool_Get(t *testing.T) {
 		require.NoError(t, err)
 
 		// Borrow all available sessions
-		key1, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		key1, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, key1)
 
-		key2, err := pool.Get(ctx, "service1", "user1", "api1", "trace2", nil)
+		key2, err := pool.Get(ctx, "service1", "org1", "api1", "trace2", nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, key2)
 
 		// Try to borrow one more - should fail
-		key3, err := pool.Get(ctx, "service1", "user1", "api1", "trace3", nil)
+		key3, err := pool.Get(ctx, "service1", "org1", "api1", "trace3", nil)
 		assert.Error(t, err)
 		assert.ErrorIs(t, err, dsession.ErrConcurrentStreamLimitExceeded)
 		assert.Empty(t, key3)
 	})
 
-	t.Run("max sessions per user exhausted", func(t *testing.T) {
-		pool, err := NewLocalSessionPool("local://localhost?max_sessions=10&max_sessions_per_user=2", logger)
+	t.Run("max sessions per organization exhausted", func(t *testing.T) {
+		pool, err := NewLocalSessionPool("local://localhost?max_sessions=10&max_sessions_per_organization=2", logger)
 		require.NoError(t, err)
 
-		// Borrow maximum sessions for user1
-		key1, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		// Borrow maximum sessions for Org1
+		key1, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, key1)
 
-		key2, err := pool.Get(ctx, "service1", "user1", "api1", "trace2", nil)
+		key2, err := pool.Get(ctx, "service1", "org1", "api1", "trace2", nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, key2)
 
-		// Try to borrow one more for same user - should fail
-		key3, err := pool.Get(ctx, "service1", "user1", "api1", "trace3", nil)
+		// Try to borrow one more for same organization - should fail
+		key3, err := pool.Get(ctx, "service1", "org1", "api1", "trace3", nil)
 		assert.Error(t, err)
 		assert.ErrorIs(t, err, dsession.ErrConcurrentStreamLimitExceeded)
 		assert.Empty(t, key3)
 
-		// Different user should still be able to borrow
-		key4, err := pool.Get(ctx, "service1", "user2", "api2", "trace4", nil)
+		// Different organization should still be able to borrow
+		key4, err := pool.Get(ctx, "service1", "org2", "api2", "trace4", nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, key4)
 	})
@@ -147,7 +161,7 @@ func TestLocalSessionPool_Get(t *testing.T) {
 
 		keys := make(map[string]bool)
 		for i := 0; i < 5; i++ {
-			key, err := pool.Get(ctx, "service1", "user1", "api1", fmt.Sprintf("trace%d", i), nil)
+			key, err := pool.Get(ctx, "service1", "org1", "api1", fmt.Sprintf("trace%d", i), nil)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, key)
 			assert.False(t, keys[key], "duplicate key generated")
@@ -161,11 +175,11 @@ func TestLocalSessionPool_Get(t *testing.T) {
 		require.NoError(t, err)
 
 		// Borrow sessions for same trace ID
-		key1, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		key1, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, key1)
 
-		key2, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		key2, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, key2)
 
@@ -180,7 +194,7 @@ func TestLocalSessionPool_Get(t *testing.T) {
 		pool, err := NewLocalSessionPool("local://localhost?max_sessions=10", logger)
 		require.NoError(t, err)
 
-		key, err := pool.Get(ctx, "service1", "user1", "api1", "", nil)
+		key, err := pool.Get(ctx, "service1", "org1", "api1", "", nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, key)
 
@@ -200,7 +214,7 @@ func TestLocalSessionPool_Release(t *testing.T) {
 		pool, err := NewLocalSessionPool("local://localhost?max_sessions=10", logger)
 		require.NoError(t, err)
 
-		key, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		key, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		require.NoError(t, err)
 
 		pool.Release(key)
@@ -233,9 +247,9 @@ func TestLocalSessionPool_Release(t *testing.T) {
 		require.NoError(t, err)
 
 		// Borrow two sessions for same trace
-		key1, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		key1, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		require.NoError(t, err)
-		key2, err := pool.Get(ctx, "service1", "user1", "api1", "trace1", nil)
+		key2, err := pool.Get(ctx, "service1", "org1", "api1", "trace1", nil)
 		require.NoError(t, err)
 
 		localPool := pool.(*LocalSessionPool)
@@ -278,7 +292,7 @@ func TestLocalSessionPool_Concurrency(t *testing.T) {
 				defer wg.Done()
 
 				for j := 0; j < operationsPerGoroutine; j++ {
-					key, err := pool.Get(ctx, "service", fmt.Sprintf("user%d", workerID),
+					key, err := pool.Get(ctx, "service", fmt.Sprintf("organization%d", workerID),
 						fmt.Sprintf("api%d", workerID), fmt.Sprintf("trace%d", workerID), nil)
 					if err != nil {
 						errors <- err
@@ -323,7 +337,7 @@ func TestLocalSessionPool_Concurrency(t *testing.T) {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
-				key, err := pool.Get(ctx, "service", fmt.Sprintf("user%d", id),
+				key, err := pool.Get(ctx, "service", fmt.Sprintf("organization%d", id),
 					fmt.Sprintf("api%d", id), fmt.Sprintf("trace%d", id), nil)
 				if err != nil {
 					errors <- err
@@ -358,119 +372,119 @@ func TestLocalSessionPool_GetStats(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initial stats
-	borrowed, available, traceIDs, users := pool.(*LocalSessionPool).GetStats()
+	borrowed, available, traceIDs, organizations := pool.(*LocalSessionPool).GetStats()
 	assert.Equal(t, 0, borrowed)
 	assert.Equal(t, int64(10), available)
 	assert.Equal(t, 0, traceIDs)
-	assert.Equal(t, 0, users)
+	assert.Equal(t, 0, organizations)
 
 	// Borrow some sessions
-	key1, err := pool.Get(ctx, "service", "user1", "api1", "trace1", nil)
+	key1, err := pool.Get(ctx, "service", "org1", "api1", "trace1", nil)
 	require.NoError(t, err)
-	key2, err := pool.Get(ctx, "service", "user2", "api2", "trace1", nil)
+	key2, err := pool.Get(ctx, "service", "org2", "api2", "trace1", nil)
 	require.NoError(t, err)
-	key3, err := pool.Get(ctx, "service", "user3", "api3", "trace2", nil)
+	key3, err := pool.Get(ctx, "service", "org3", "api3", "trace2", nil)
 	require.NoError(t, err)
 
 	// Check stats
-	borrowed, available, traceIDs, users = pool.(*LocalSessionPool).GetStats()
+	borrowed, available, traceIDs, organizations = pool.(*LocalSessionPool).GetStats()
 	assert.Equal(t, 3, borrowed)
 	assert.Equal(t, int64(7), available)
-	assert.Equal(t, 2, traceIDs) // trace1 and trace2
-	assert.Equal(t, 3, users)    // user1, user2, user3
+	assert.Equal(t, 2, traceIDs)      // trace1 and trace2
+	assert.Equal(t, 3, organizations) // org1, org2, org3
 
 	// Release one session
 	pool.Release(key1)
 
-	borrowed, available, traceIDs, users = pool.(*LocalSessionPool).GetStats()
+	borrowed, available, traceIDs, organizations = pool.(*LocalSessionPool).GetStats()
 	assert.Equal(t, 2, borrowed)
 	assert.Equal(t, int64(8), available)
-	assert.Equal(t, 2, traceIDs) // still 2 trace IDs
-	assert.Equal(t, 2, users)    // user2, user3
+	assert.Equal(t, 2, traceIDs)      // still 2 trace IDs
+	assert.Equal(t, 2, organizations) // org2, org3
 
 	// Release remaining sessions
 	pool.Release(key2)
 	pool.Release(key3)
 
-	borrowed, available, traceIDs, users = pool.(*LocalSessionPool).GetStats()
+	borrowed, available, traceIDs, organizations = pool.(*LocalSessionPool).GetStats()
 	assert.Equal(t, 0, borrowed)
 	assert.Equal(t, int64(10), available)
-	assert.Equal(t, 0, traceIDs) // all trace IDs cleaned up
-	assert.Equal(t, 0, users)    // all user sessions cleaned up
+	assert.Equal(t, 0, traceIDs)      // all trace IDs cleaned up
+	assert.Equal(t, 0, organizations) // all organization sessions cleaned up
 }
 
-func TestLocalSessionPool_UserSessionTracking(t *testing.T) {
+func TestLocalSessionPool_OrganizationSessionTracking(t *testing.T) {
 	logger := zap.NewNop()
 	ctx := context.Background()
 
-	t.Run("user session counting", func(t *testing.T) {
-		pool, err := NewLocalSessionPool("local://localhost?max_sessions=10&max_sessions_per_user=3", logger)
+	t.Run("organization session counting", func(t *testing.T) {
+		pool, err := NewLocalSessionPool("local://localhost?max_sessions=10&max_sessions_per_organization=3", logger)
 		require.NoError(t, err)
 
-		// Borrow sessions for different users
-		key1, err := pool.Get(ctx, "service", "user1", "api1", "trace1", nil)
+		// Borrow sessions for different organizations
+		key1, err := pool.Get(ctx, "service", "org1", "api1", "trace1", nil)
 		require.NoError(t, err)
-		key2, err := pool.Get(ctx, "service", "user1", "api1", "trace2", nil)
+		key2, err := pool.Get(ctx, "service", "org1", "api1", "trace2", nil)
 		require.NoError(t, err)
-		key3, err := pool.Get(ctx, "service", "user2", "api2", "trace3", nil)
+		key3, err := pool.Get(ctx, "service", "org2", "api2", "trace3", nil)
 		require.NoError(t, err)
 
 		localPool := pool.(*LocalSessionPool)
 		localPool.mu.RLock()
-		user1Count := localPool.userSessions["user1"]
-		user2Count := localPool.userSessions["user2"]
+		org1Count := localPool.organizationSessions["org1"]
+		org2Count := localPool.organizationSessions["org2"]
 		localPool.mu.RUnlock()
 
-		assert.Equal(t, int64(2), user1Count)
-		assert.Equal(t, int64(1), user2Count)
+		assert.Equal(t, int64(2), org1Count)
+		assert.Equal(t, int64(1), org2Count)
 
-		// Release one session for user1
+		// Release one session for org1
 		pool.Release(key1)
 
 		localPool.mu.RLock()
-		user1Count = localPool.userSessions["user1"]
+		org1Count = localPool.organizationSessions["org1"]
 		localPool.mu.RUnlock()
-		assert.Equal(t, int64(1), user1Count)
+		assert.Equal(t, int64(1), org1Count)
 
 		// Release remaining sessions
 		pool.Release(key2)
 		pool.Release(key3)
 
 		localPool.mu.RLock()
-		_, user1Exists := localPool.userSessions["user1"]
-		_, user2Exists := localPool.userSessions["user2"]
+		_, org1Exists := localPool.organizationSessions["org1"]
+		_, org2Exists := localPool.organizationSessions["org2"]
 		localPool.mu.RUnlock()
-		assert.False(t, user1Exists)
-		assert.False(t, user2Exists)
+		assert.False(t, org1Exists)
+		assert.False(t, org2Exists)
 	})
 
-	t.Run("user session limit enforcement", func(t *testing.T) {
-		pool, err := NewLocalSessionPool("local://localhost?max_sessions=10&max_sessions_per_user=2", logger)
+	t.Run("organization session limit enforcement", func(t *testing.T) {
+		pool, err := NewLocalSessionPool("local://localhost?max_sessions=10&max_sessions_per_organization=2", logger)
 		require.NoError(t, err)
 
-		// User1 borrows maximum sessions
-		key1, err := pool.Get(ctx, "service", "user1", "api1", "trace1", nil)
+		// Org1 borrows maximum sessions
+		key1, err := pool.Get(ctx, "service", "org1", "api1", "trace1", nil)
 		require.NoError(t, err)
-		key2, err := pool.Get(ctx, "service", "user1", "api1", "trace2", nil)
+		key2, err := pool.Get(ctx, "service", "org1", "api1", "trace2", nil)
 		require.NoError(t, err)
 
-		// User1 tries to borrow one more - should fail
-		_, err = pool.Get(ctx, "service", "user1", "api1", "trace3", nil)
+		// Org1 tries to borrow one more - should fail
+		_, err = pool.Get(ctx, "service", "org1", "api1", "trace3", nil)
 		assert.ErrorIs(t, err, dsession.ErrConcurrentStreamLimitExceeded)
 
-		// User2 should still be able to borrow
-		key3, err := pool.Get(ctx, "service", "user2", "api2", "trace4", nil)
+		// Org2 should still be able to borrow
+		key3, err := pool.Get(ctx, "service", "org2", "api2", "trace4", nil)
 		require.NoError(t, err)
-		key4, err := pool.Get(ctx, "service", "user2", "api2", "trace5", nil)
+		key4, err := pool.Get(ctx, "service", "org2", "api2", "trace5", nil)
 		require.NoError(t, err)
 
-		// User2 tries to borrow one more - should also fail
-		_, err = pool.Get(ctx, "service", "user2", "api2", "trace6", nil)
+		// Org2 tries to borrow one more - should also fail
+		_, err = pool.Get(ctx, "service", "org2", "api2", "trace6", nil)
 		assert.ErrorIs(t, err, dsession.ErrConcurrentStreamLimitExceeded)
 
-		// Release one session for user1, should be able to borrow again
+		// Release one session for Org1, should be able to borrow again
 		pool.Release(key1)
-		key5, err := pool.Get(ctx, "service", "user1", "api1", "trace7", nil)
+		key5, err := pool.Get(ctx, "service", "org1", "api1", "trace7", nil)
 		require.NoError(t, err)
 
 		// Clean up

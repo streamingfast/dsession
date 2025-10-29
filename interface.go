@@ -13,7 +13,7 @@ type SessionPool interface {
 	// Get borrows a session from the pool, returning a key that must be used to release the session back to the pool.
 	// If an error happens during the session (quota exceeded or key gets disabled), the onError function will be called with the error.
 	// The returned error that can be unwrapped as one of ErrUnavailable, ErrPermissionDenied, ErrQuotaExceeded, or ErrConcurrentStreamLimitExceeded
-	Get(ctx context.Context, serviceName string, userID string, apiKeyID string, traceID string, onError func(error)) (key string, err error)
+	Get(ctx context.Context, serviceName string, organizationID string, apiKeyID string, traceID string, onError func(error)) (key string, err error)
 
 	// Release returns a session to the pool
 	Release(sessionKey string)

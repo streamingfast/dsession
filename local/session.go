@@ -11,27 +11,27 @@ import (
 )
 
 type sessionInfo struct {
-	sessionKey  string
-	userID      string
-	apiKeyID    string
-	traceID     string
-	borrowedAt  time.Time
-	serviceName string
-	workers     atomic.Int64
+	sessionKey     string
+	organizationID string
+	apiKeyID       string
+	traceID        string
+	borrowedAt     time.Time
+	serviceName    string
+	workers        atomic.Int64
 }
 
 // Get borrows a session from the local pool
 func (p *LocalSessionPool) Get(
 	ctx context.Context,
 	serviceName string,
-	userID string,
+	organizationID string,
 	apiKeyID string,
 	traceID string,
 	_ func(error),
 ) (string, error) {
 	p.logger.Debug("get session request",
 		zap.String("service", serviceName),
-		zap.String("user_id", userID),
+		zap.String("organization_id", organizationID),
 		zap.String("api_key_id", apiKeyID),
 		zap.String("trace_id", traceID))
 
@@ -49,13 +49,13 @@ func (p *LocalSessionPool) Get(
 		return "", dsession.ErrConcurrentStreamLimitExceeded
 	}
 
-	// Check user-specific session limit
-	userSessionCount := p.userSessions[userID]
-	if userSessionCount >= p.maxSessionsPerUser {
-		p.logger.Info("concurrent stream limit exceeded (max sessions per user reached)",
-			zap.String("user_id", userID),
-			zap.Int64("user_sessions", userSessionCount),
-			zap.Int64("max_per_user", p.maxSessionsPerUser))
+	// Check organization-specific session limit
+	orgSessionCount := p.organizationSessions[organizationID]
+	if orgSessionCount >= p.maxSessionsPerOrg {
+		p.logger.Info("concurrent stream limit exceeded (max sessions per organization reached)",
+			zap.String("organization_id", organizationID),
+			zap.Int64("organization_sessions", orgSessionCount),
+			zap.Int64("max_per_organization", p.maxSessionsPerOrg))
 		return "", dsession.ErrConcurrentStreamLimitExceeded
 	}
 
@@ -65,26 +65,26 @@ func (p *LocalSessionPool) Get(
 
 	// Store the session info
 	p.borrowedSessions[sessionKey] = &sessionInfo{
-		sessionKey:  sessionKey,
-		userID:      userID,
-		apiKeyID:    apiKeyID,
-		traceID:     traceID,
-		serviceName: serviceName,
-		borrowedAt:  time.Now(),
+		sessionKey:     sessionKey,
+		organizationID: organizationID,
+		apiKeyID:       apiKeyID,
+		traceID:        traceID,
+		serviceName:    serviceName,
+		borrowedAt:     time.Now(),
 	}
 
 	// Update counters
 	if traceID != "" {
 		p.traceIDSessions[traceID]++
 	}
-	p.userSessions[userID]++
+	p.organizationSessions[organizationID]++
 
 	p.logger.Debug("session borrowed",
 		zap.String("session_key", sessionKey),
 		zap.Int64("available", p.maxSessions-borrowedCount-1),
 		zap.Int64("borrowed", borrowedCount+1),
 		zap.Int64("max", p.maxSessions),
-		zap.Int64("user_sessions", p.userSessions[userID]))
+		zap.Int64("organization_sessions", p.organizationSessions[organizationID]))
 
 	return sessionKey, nil
 }
@@ -117,10 +117,10 @@ func (p *LocalSessionPool) Release(sessionKey string) {
 		}
 	}
 
-	if count, ok := p.userSessions[info.userID]; ok && count > 0 {
-		p.userSessions[info.userID]--
-		if p.userSessions[info.userID] == 0 {
-			delete(p.userSessions, info.userID)
+	if count, ok := p.organizationSessions[info.organizationID]; ok && count > 0 {
+		p.organizationSessions[info.organizationID]--
+		if p.organizationSessions[info.organizationID] == 0 {
+			delete(p.organizationSessions, info.organizationID)
 		}
 	}
 
@@ -130,19 +130,19 @@ func (p *LocalSessionPool) Release(sessionKey string) {
 	duration := time.Since(info.borrowedAt)
 	p.logger.Debug("session released",
 		zap.String("session_key", sessionKey),
-		zap.String("user_id", info.userID),
+		zap.String("organization_id", info.organizationID),
 		zap.String("service", info.serviceName),
 		zap.Duration("held_duration", duration))
 }
 
 // GetStats returns statistics about the pool (kept for debugging, not part of interface)
-func (p *LocalSessionPool) GetStats() (borrowed int, available int64, traceIDs int, users int) {
+func (p *LocalSessionPool) GetStats() (borrowed int, available int64, traceIDs int, organizations int) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	borrowed = len(p.borrowedSessions)
 	available = p.maxSessions - int64(borrowed)
 	traceIDs = len(p.traceIDSessions)
-	users = len(p.userSessions)
+	organizations = len(p.organizationSessions)
 	return
 }
