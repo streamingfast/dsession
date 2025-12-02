@@ -75,7 +75,10 @@ func (p *LocalSessionPool) GetWorker(
 	workerKey := fmt.Sprintf("%s-w%04d", requestKey, sessionWorkerNum)
 
 	// Track the worker-to-session mapping and update user worker count
-	p.workerToSession[workerKey] = requestKey
+	p.workerToSession[workerKey] = workerMapping{
+		sessionKey:     requestKey,
+		organizationID: sess.organizationID,
+	}
 	p.orgWorkers[sess.organizationID]++
 
 	p.logger.Debug("worker borrowed",
@@ -98,7 +101,7 @@ func (p *LocalSessionPool) ReleaseWorker(workerKey string) {
 	defer p.mu.Unlock()
 
 	// Find the session this worker belongs to
-	sessionKey, exists := p.workerToSession[workerKey]
+	mapping, exists := p.workerToSession[workerKey]
 	if !exists {
 		p.logger.Warn("releasing unknown worker",
 			zap.String("worker_key", workerKey))
@@ -108,30 +111,34 @@ func (p *LocalSessionPool) ReleaseWorker(workerKey string) {
 	// Remove the worker from the mapping
 	delete(p.workerToSession, workerKey)
 
-	// Find the session and decrement its worker count
-	sess, sessionExists := p.borrowedSessions[sessionKey]
-	if !sessionExists {
-		p.logger.Warn("worker belongs to unknown session",
-			zap.String("worker_key", workerKey),
-			zap.String("session_key", sessionKey))
-		return
-	}
-
-	// Decrement counters
+	// Always decrement the global worker counter
 	globalWorkers := p.workerCounter.Add(-1)
-	sessionWorkers := sess.workers.Add(-1)
 
-	// Decrement user worker count
-	if count, ok := p.orgWorkers[sess.organizationID]; ok && count > 0 {
-		p.orgWorkers[sess.organizationID]--
-		if p.orgWorkers[sess.organizationID] == 0 {
-			delete(p.orgWorkers, sess.organizationID)
+	// Always decrement org workers using the stored organizationID
+	if count, ok := p.orgWorkers[mapping.organizationID]; ok && count > 0 {
+		p.orgWorkers[mapping.organizationID]--
+		if p.orgWorkers[mapping.organizationID] == 0 {
+			delete(p.orgWorkers, mapping.organizationID)
 		}
 	}
 
+	// Find the session and decrement its worker count (if session still exists)
+	sess, sessionExists := p.borrowedSessions[mapping.sessionKey]
+	if !sessionExists {
+		// Session was already released, but we've already decremented global and org counters above
+		p.logger.Warn("worker released but session already gone",
+			zap.String("worker_key", workerKey),
+			zap.String("session_key", mapping.sessionKey),
+			zap.Int64("remaining_global_workers", globalWorkers))
+		return
+	}
+
+	// Decrement session-specific counter
+	sessionWorkers := sess.workers.Add(-1)
+
 	p.logger.Debug("worker released",
 		zap.String("worker_key", workerKey),
-		zap.String("session_key", sessionKey),
+		zap.String("session_key", mapping.sessionKey),
 		zap.Int64("remaining_session_workers", sessionWorkers),
 		zap.Int64("remaining_global_workers", globalWorkers))
 }

@@ -15,6 +15,13 @@ func init() {
 	dsession.Register("local", NewLocalSessionPool)
 }
 
+// workerMapping stores the session key and organization ID for a worker
+// This allows proper cleanup of all counters even if the session is released first
+type workerMapping struct {
+	sessionKey     string
+	organizationID string
+}
+
 // LocalSessionPool is a local in-memory implementation of the session pool
 type LocalSessionPool struct {
 	logger *zap.Logger
@@ -34,7 +41,7 @@ type LocalSessionPool struct {
 	traceIDSessions      map[string]int64
 	organizationSessions map[string]int64
 	orgWorkers           map[string]int64
-	workerToSession      map[string]string
+	workerToSession      map[string]workerMapping
 }
 
 // NewLocalSessionPool creates a new local session pool
@@ -55,7 +62,7 @@ func NewLocalSessionPool(config string, logger *zap.Logger) (dsession.SessionPoo
 		traceIDSessions:      make(map[string]int64),
 		organizationSessions: make(map[string]int64),
 		orgWorkers:           make(map[string]int64),
-		workerToSession:      make(map[string]string),
+		workerToSession:      make(map[string]workerMapping),
 	}
 
 	// Parse URL parameters for configuration
