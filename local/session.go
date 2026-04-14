@@ -18,6 +18,7 @@ type sessionInfo struct {
 	borrowedAt     time.Time
 	serviceName    string
 	workers        atomic.Int64
+	workerSeqID    atomic.Uint64
 }
 
 // Get borrows a session from the local pool

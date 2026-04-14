@@ -71,8 +71,7 @@ func (p *LocalSessionPool) GetWorker(
 		return "", dsession.ErrWorkersLimitExceeded
 	}
 
-	// Generate worker key
-	workerKey := fmt.Sprintf("%s-w%04d", requestKey, sessionWorkerNum)
+	workerKey := fmt.Sprintf("%s-w%d", requestKey, sess.workerSeqID.Add(1))
 
 	// Track the worker-to-session mapping and update user worker count
 	p.workerToSession[workerKey] = requestKey
