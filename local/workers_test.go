@@ -34,12 +34,13 @@ func TestLocalSessionPool_GetWorker(t *testing.T) {
 		// Check that worker was tracked
 		localPool := pool.(*LocalSessionPool)
 		localPool.mu.RLock()
-		mappedSessionKey, exists := localPool.workerToSession[workerKey]
+		mapping, exists := localPool.workerToSession[workerKey]
 		orgWorkers := localPool.orgWorkers["org1"]
 		localPool.mu.RUnlock()
 
 		assert.True(t, exists)
-		assert.Equal(t, sessionKey, mappedSessionKey)
+		assert.Equal(t, sessionKey, mapping.sessionKey)
+		assert.Equal(t, "org1", mapping.organizationID)
 		assert.Equal(t, int64(1), orgWorkers)
 	})
 
