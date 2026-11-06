@@ -494,3 +494,26 @@ func TestLocalSessionPool_OrganizationSessionTracking(t *testing.T) {
 		pool.Release(key5)
 	})
 }
+
+// TestLocalSessionPool_NoOrganization checks that requests without an organization, as every
+// request is with the null auth plugin, are not all counted against one organization's limits.
+func TestLocalSessionPool_NoOrganization(t *testing.T) {
+	ctx := context.Background()
+	pool, err := NewLocalSessionPool("local://localhost?max_sessions=4&max_sessions_per_organization=1&max_workers=4&max_workers_per_organization=1", zap.NewNop())
+	require.NoError(t, err)
+
+	var sessionKeys []string
+	for i := 0; i < 4; i++ {
+		key, err := pool.Get(ctx, "service1", "", "", fmt.Sprintf("trace%d", i), nil)
+		require.NoError(t, err, "session %d", i)
+		sessionKeys = append(sessionKeys, key)
+	}
+
+	_, err = pool.Get(ctx, "service1", "", "", "trace4", nil)
+	assert.ErrorIs(t, err, dsession.ErrConcurrentStreamLimitExceeded, "the global limit still applies")
+
+	for i, key := range sessionKeys {
+		_, err := pool.GetWorker(ctx, "service1", key, 1)
+		require.NoError(t, err, "worker %d", i)
+	}
+}

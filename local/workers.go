@@ -41,9 +41,10 @@ func (p *LocalSessionPool) GetWorker(
 		return "", dsession.ErrWorkersLimitExceeded
 	}
 
-	// Check per-user worker limit
+	// Check per-user worker limit, which like the per-organization session limit does not apply
+	// to a session without an organization
 	userWorkers := p.orgWorkers[sess.organizationID]
-	if userWorkers >= p.maxWorkersPerOrg {
+	if sess.organizationID != "" && userWorkers >= p.maxWorkersPerOrg {
 		// Rollback global counter
 		p.workerCounter.Add(-1)
 		p.logger.Debug("max workers per user reached",
