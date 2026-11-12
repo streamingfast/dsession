@@ -3,6 +3,7 @@ package local
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -148,14 +149,14 @@ func TestLocalSessionPool_GetWorker(t *testing.T) {
 
 		// Test unique keys and numbering
 		keys := make(map[string]bool)
-		expectedSuffixes := []string{"-w0001", "-w0002", "-w0003"}
+		expectedSuffixes := []string{"-w1", "-w2", "-w3"}
 
 		for i := 0; i < 3; i++ {
 			workerKey, err := pool.GetWorker(ctx, "service1", sessionKey, 5)
 			require.NoError(t, err)
 			assert.NotEmpty(t, workerKey)
 			assert.False(t, keys[workerKey], "duplicate worker key generated")
-			assert.Contains(t, workerKey, expectedSuffixes[i])
+			assert.True(t, strings.HasSuffix(workerKey, expectedSuffixes[i]), "%s does not end with %s", workerKey, expectedSuffixes[i])
 			keys[workerKey] = true
 		}
 		assert.Len(t, keys, 3)

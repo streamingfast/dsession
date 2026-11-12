@@ -50,9 +50,11 @@ func (p *LocalSessionPool) Get(
 		return "", dsession.ErrConcurrentStreamLimitExceeded
 	}
 
-	// Check organization-specific session limit
+	// Check organization-specific session limit. A request without an organization, as every
+	// request is with the null auth plugin, has nobody to share a limit with, so only the global
+	// one applies to it.
 	orgSessionCount := p.organizationSessions[organizationID]
-	if orgSessionCount >= p.maxSessionsPerOrg {
+	if organizationID != "" && orgSessionCount >= p.maxSessionsPerOrg {
 		p.logger.Info("concurrent stream limit exceeded (max sessions per organization reached)",
 			zap.String("organization_id", organizationID),
 			zap.Int64("organization_sessions", orgSessionCount),
