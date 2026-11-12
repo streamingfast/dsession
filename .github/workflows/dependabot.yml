@@ -8,11 +8,43 @@ permissions:
 jobs:
   dependency-review:
     runs-on: ubuntu-latest
+    # Skipped on dependabot PRs: the action needs the dependency review API, and
+    # dependabot runs get a read-only GITHUB_TOKEN. A skipped job still satisfies
+    # the required status check, so those PRs stay mergeable. Dependabot's own
+    # security alerts remain the safety net there.
     if: ${{ github.actor != 'dependabot[bot]' }}
     steps:
       - name: "Checkout Repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: "Dependency Review"
-        uses: actions/dependency-review-action@v4
+        id: review
+        uses: actions/dependency-review-action@v5
         with:
-          fail-on-severity: high # Fail on high, critical
+          warn-only: true
+      # The action cannot exclude paths, so this step fails the check on high and critical
+      # advisories, except in dependency files under a path prefix listed in the repo's optional
+      # .github/dependency-review-exclude-paths (one per line, `#` starts a comment).
+      - name: "Fail on high or critical advisories"
+        env:
+          EXCLUDE_PATHS_FILE: .github/dependency-review-exclude-paths
+          VULNERABLE_CHANGES: ${{ steps.review.outputs.vulnerable-changes }}
+        run: |
+          excluded='[]'
+          if [ -f "$EXCLUDE_PATHS_FILE" ]; then
+            excluded=$(sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$EXCLUDE_PATHS_FILE" \
+              | grep -v '^$' | sed 's|^/||' | jq -R . | jq -s .)
+          fi
+          failing=$(jq -r --argjson excluded "$excluded" '
+            .[]
+            | select(.change_type == "added")
+            | .manifest as $manifest
+            | select(any($excluded[]; . as $prefix | $manifest | startswith($prefix)) | not)
+            | .name as $name | .version as $version
+            | .vulnerabilities[]
+            | select(.severity == "high" or .severity == "critical")
+            | "\($manifest) » \($name)@\($version): \(.advisory_ghsa_id) (\(.severity))"
+          ' <<< "${VULNERABLE_CHANGES:-[]}")
+          if [ -n "$failing" ]; then
+            echo "$failing"
+            exit 1
+          fi
